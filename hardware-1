@@ -1,0 +1,259 @@
+int buzzerpin = 26;
+
+///////////////////////////////////
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <Wire.h>
+#include <TinyGPS++.h>
+static const uint32_t GPSBaud = 9600;
+// The TinyGPS++ object
+TinyGPSPlus gps;
+float latitude=17.537536;
+float longitude=18.383903;
+String lati = "17.537536";
+String longi ="78.383903";
+
+///////////////////////////////////
+#include <LiquidCrystal_I2C.h>
+LiquidCrystal_I2C lcd(0x27,16,2);  // set the LCD address to 0x27 for a 16 chars and 2 line display
+#include <SimpleTimer.h>
+SimpleTimer lcddisplaytimer;
+SimpleTimer gettimer;
+SimpleTimer updatetimer;
+///////////////////////////////////
+#include "MAX30105.h"
+#include "heartRate.h"
+MAX30105 particleSensor;
+String heartrate = "00";
+long randNumber;
+long irValue;
+long int redValue;
+int heartbeatval;
+int spo2val;
+String rheartbeat="NF";
+String rspo="NF";
+String rpanicstatus="NORMAL";
+///////////////////////////////////
+#include <DallasTemperature.h>
+#include <OneWire.h>
+#define ONE_WIRE_BUS 23  
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);  // Pass the oneWire reference to Dallas Temperature.
+int temperature;
+
+String rtemperature="30";
+
+
+///////////////////////////////////
+const char *ssid = "project4G";  // replace with your wifi ssid and wpa2 key
+const char *password = "project1234";
+
+const char *host = "http://microembeddedtech.com/appinventor";
+String get_host = "http://microembeddedtech.com/appinventor";
+
+WiFiServer server(80);  // open port 80 for server connection
+String tablename = "vitfallprediction";
+WiFiClient client;
+
+//////////////////////////////////////
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Wire.h>
+Adafruit_MPU6050 mpu;
+
+float xval,yval,zval;
+String xvalue,yvalue,zvalue;
+
+
+
+void setup() {
+  Serial.begin(9600);
+  maxinit();
+  delay(2000);
+  mpuinit();
+  pinMode(buzzerpin,OUTPUT);
+digitalWrite(buzzerpin,0);
+
+
+  lcd.begin(); 
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("AI WEARABLE DEVICE");
+  lcd.setCursor(0,1);
+  lcd.print(" FOR FALL PREVENTION ");
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(2000);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected.");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  gettimer.setInterval(1000,  allfunctioncalls); 
+  lcddisplaytimer.setInterval(2000,  lcdupdate); 
+  //updatetimer.setInterval(10000,  updatetodb); 
+}
+
+void loop() {
+  lcddisplaytimer.run();
+  gettimer.run();
+  //updatetimer.run();
+  particleSensor.check(); //Check the sensor
+  while (particleSensor.available()) {
+      // read stored IR
+
+      irValue=particleSensor.getFIFOIR();
+      //particleSensor.getFIFORed();
+        redValue= particleSensor.getFIFORed();  
+      particleSensor.nextSample();
+      //Serial.print("IR VALUE:");
+      //Serial.println(irValue);
+      //Serial.println(redValue);
+      if (irValue < 30000){
+      //Serial.println(" No finger");
+      rheartbeat="NF";
+      rspo="NF";
+      }
+      else {
+      heartbeatval =irValue/700;
+      spo2val=redValue/600;
+      // Serial.print("HB:");
+      // Serial.print(heartbeatval);
+      // Serial.print(",");
+      // Serial.print("SPO:");
+      // Serial.println(spo2val);
+
+      rheartbeat=String(heartbeatval);
+      rspo=String(spo2val);
+      
+      }
+
+      delay(500);
+  }
+
+  
+}
+
+void allfunctioncalls(){
+
+    getTemperatureval();
+    getmpuvalues();
+   // checkgps();
+   
+   
+}
+
+void checkgps(){
+  while (Serial.available() > 0)
+    if (gps.encode(Serial.read()))
+      displayInfo();
+  if (millis() > 5000 && gps.charsProcessed() < 10)
+  {
+    Serial.println(F("No GPS detected: check wiring."));
+    while (true);
+  }
+
+}
+
+
+void lcdupdate(){
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("O:");
+  lcd.print(rspo);
+  lcd.print(" ");
+  lcd.print("HB:");
+  lcd.print(rheartbeat);
+   lcd.print(" ");
+  lcd.print("T:");
+  lcd.print(rtemperature);
+  lcd.setCursor(0,1);
+  lcd.print(xvalue);
+  lcd.print(" ");
+   lcd.print(yvalue);
+  lcd.print(" ");
+  lcd.print(zvalue);
+  delay(2000);
+   lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("LAT: ");
+  lcd.print(lati);
+  lcd.setCursor(0,1);
+  lcd.print("LON: ");
+  lcd.print(longi);
+  userupdate_status(tablename,rtemperature,rspo,rheartbeat,xvalue,yvalue,zvalue, lati,longi);
+  delay(1000);
+}
+
+void buzzering() {
+  digitalWrite(buzzerpin, 1);
+  delay(1000);
+  digitalWrite(buzzerpin, 0);
+}
+
+void displayInfo()
+{
+  if (gps.location.isValid())
+  {
+
+    // Serial.print(gps.location.lat(), 6);
+    latitude = gps.location.lat(), 6;
+    // Serial.print(latitude );
+    //Serial.print(F(","));
+    // Serial.print(gps.location.lng(), 6);
+    longitude = gps.location.lng(), 6;
+    // Serial.print(longitude);
+
+    // Serial.println(gpslocation);
+
+  lati= String(latitude, 6);
+  longi= String(longitude, 6);
+  //Serial.print("LATI:");Serial.println(lati);
+  //Serial.print("LONGI:");Serial.println(longi);
+    // Serial.println(gpslocation);
+
+  }
+  else
+  {
+    //Serial.print(F("INVALID"));
+     lati = "17.537536";
+     longi = "78.383903";
+    //Serial.print("LATI:");Serial.println(lati);
+    //Serial.print("LONGI:");Serial.println(longi);
+  }
+
+}
+
+
+void userupdate_status(String table_name,String utemperature,String uspo, String uheartbeat,String x,String y,String z, String ulati, String ulongi) {
+  WiFiClient client = server.available();
+
+  HTTPClient http;
+
+  String Ss2 = '"' + ulati + '"';
+  String Ss3 = '"' + ulongi + '"';
+
+  String Ss4 = '"' + uspo + '"';
+  String Ss5 = '"' + uheartbeat + '"';
+  String Ss6 = '"' + x + '"';
+   String Ss7 = '"' + y + '"';
+    String Ss8 = '"' + z + '"';
+
+  String url = get_host+"/vitfalldetection.php?table_name="+table_name+"&tempval="+utemperature+"&spval="+Ss4+"&hbval="+Ss5+"&mx="+Ss6+"&my="+Ss7+"&mz="+Ss8+"&latitude=" +Ss2 +"&longitude="+Ss3;
+
+  Serial.println(url);
+  http.begin(client,url);
+
+  //GET method
+  int httpCode = http.GET();
+  String payload = http.getString();
+  Serial.println(payload);
+  http.end();
+  delay(1000);
+}
