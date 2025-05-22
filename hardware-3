@@ -1,0 +1,116 @@
+import streamlit as st
+import nltk
+import random
+import speech_recognition as sr
+import pyttsx3
+from transformers import pipeline, Conversation
+from textblob import TextBlob
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+
+nltk.download('punkt')
+nltk.download('stopwords')
+
+# Load chatbot model
+chatbot = pipeline("conversational", model="facebook/blenderbot-400M-distill")
+
+# Health tips
+health_tips = [
+    "Stay hydrated and drink at least 8 glasses of water daily.",
+    "Exercise regularly for at least 30 minutes a day.",
+    "Get enough sleep – 7-9 hours per night is recommended.",
+    "Eat a balanced diet with plenty of fruits and vegetables.",
+    "Take breaks from screens to reduce eye strain.",
+    "Practice mindfulness or meditation to reduce stress."
+]
+
+# Symptom checker (basic)
+symptom_database = {
+    "fever": "You might have an infection. Consider visiting a doctor.",
+    "cough": "Persistent coughing may indicate a respiratory issue.",
+    "headache": "Try staying hydrated and resting. If it persists, see a doctor.",
+    "stomach pain": "It could be due to indigestion. Avoid spicy food and stay hydrated."
+}
+
+conversation_history = []
+
+def healthcare_chatbot(user_input):
+    global conversation_history
+    sentiment = TextBlob(user_input).sentiment.polarity
+    
+    if "appointment" in user_input:
+        return "Would you like to schedule an appointment with the doctor?"
+    elif "medication" in user_input:
+        return "It's important to take prescribed medication regularly. If you have concerns, consult your doctor."
+    elif any(symptom in user_input for symptom in symptom_database):
+        for symptom, response in symptom_database.items():
+            if symptom in user_input:
+                return response
+    elif sentiment < -0.2:
+        return "I'm sorry to hear that. Would you like some self-care tips or to speak with a doctor?"
+    else:
+        conversation = Conversation(user_input)
+        response = chatbot(conversation)
+        return response.generated_responses[-1]
+
+# Voice input
+recognizer = sr.Recognizer()
+def voice_input():
+    with sr.Microphone() as source:
+        st.write("🎤 Listening...")
+        try:
+            audio = recognizer.listen(source)
+            text = recognizer.recognize_google(audio)
+            return text
+        except sr.UnknownValueError:
+            return "Sorry, I couldn't understand. Please try again."
+
+# Voice output
+def voice_output(text):
+    engine = pyttsx3.init()
+    engine.say(text)
+    engine.runAndWait()
+
+def main():
+    st.set_page_config(page_title="Healthcare Chatbot", layout="centered")
+    st.title("🤖 Healthcare Assistance Chatbot")
+    st.markdown("""
+        Welcome to the Healthcare Assistant Chatbot! 🚑💊
+        
+        - *Get Medical Advice* 📌
+        - *Schedule Appointments* 📅
+        - *Receive Wellness Tips* 🏋‍♂
+    """)
+    
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+    
+    user_input = st.text_input("💬 How can I help you today?")
+    if st.button("🎤 Use Voice Input"):
+        user_input = voice_input()
+        st.write("You said:", user_input)
+    
+    if st.button("🚀 Submit"):
+        if user_input:
+            st.session_state.chat_history.append(f"👤 User: {user_input}")
+            with st.spinner("Processing your query, please wait..."):
+                response = healthcare_chatbot(user_input)
+            st.session_state.chat_history.append(f"🤖 Healthcare Assistant: {response}")
+            st.success("🤖 Healthcare Assistant:")
+            st.info(response)
+            voice_output(response)
+    
+    st.markdown("### Chat History")
+    for chat in st.session_state.chat_history:
+        st.markdown(chat)
+    
+    st.markdown("---")
+    
+    if st.button("💡 Get a Health Tip"):
+        st.markdown(f"✨ Health Tip:** {random.choice(health_tips)}")
+    
+    st.markdown("---")
+    st.caption("© 2025 Healthcare AI Bot | Your Virtual Health Companion")
+
+if _name_ == "_main_":
+    main()
